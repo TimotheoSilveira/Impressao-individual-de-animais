@@ -5,3 +5,4 @@ openpyxl>=3.1
 chardet>=5.2
 reportlab>=4.2
 pillow>=10.3
+matplotlib>=3.8
