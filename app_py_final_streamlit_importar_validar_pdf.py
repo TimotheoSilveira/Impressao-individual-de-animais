@@ -39,7 +39,7 @@ def _as_naive_ts(s: pd.Series) -> pd.Series:
 # Config da página
 # -----------------------------------------------------
 st.set_page_config(page_title="Etapa 1 — Importar & Pré-visualizar", layout="wide")
-st.title("Etapa 1 — Importação e Pré-visualização")
+st.title("Importação e Pré-visualização")
 st.caption("Upload de planilha, normalização de cabeçalhos e prévia dos dados.")
 
 # -----------------------------------------------------
@@ -233,7 +233,7 @@ except ModuleNotFoundError:
 # Config da página
 # ======================================================
 st.set_page_config(page_title="Etapa 3 — PDF Individual", layout="wide")
-st.title("Etapa 3 — Geração de PDF Individual (por animal)")
+st.title("Geração de PDF Individual (por animal)")
 st.caption("Layout e rótulos conforme mapeamento solicitado.")
 
 # ======================================================
