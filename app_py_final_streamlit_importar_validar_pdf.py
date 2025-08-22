@@ -604,7 +604,43 @@ def gerar_pdf_individual(
         if i < n - 1:
             elements.append(PageBreak())
 
+# --- Gerar PDF (garante bytes) ---
+def _make_pdf_bytes() -> bytes | None:
+    try:
+        # ajuste os argumentos conforme sua função/variáveis
+        pdf_bytes = gerar_pdf_individual(
+            df=df,
+            logo_path=logo_path if 'logo_path' in locals() else None,
+            title=report_title if 'report_title' in locals() else "Relatório",
+            contact=contact_info if 'contact_info' in locals() else None,
+            limit_animals=int(limit_animals) if 'limit_animals' in locals() and limit_animals is not None else None,
+            orientation="Retrato (A4)",  # ou use a variável que você já tem
+        )
+        # só aceitamos bytes/bytearray
+        return pdf_bytes if isinstance(pdf_bytes, (bytes, bytearray)) else None
+    except Exception as e:
+        st.error(f"❌ Falha ao gerar PDF: {e}")
+        return None
 
+# Botão para gerar e salvar em session_state
+col_gen, col_dl = st.columns([1,1])
+with col_gen:
+    if st.button("🛠️ Gerar PDF", key=K("e3_btn_pdf")):
+        st.session_state["pdf_e3"] = _make_pdf_bytes()
+
+# Habilita o download apenas se houver bytes válidos
+with col_dl:
+    pdf_data = st.session_state.get("pdf_e3")
+    if isinstance(pdf_data, (bytes, bytearray)):
+        st.download_button(
+            "📄 Baixar PDF (individual por animal)",
+            data=pdf_data,
+            file_name="relatorio_animais.pdf",
+            mime="application/pdf",
+            key=K("e3_dl_pdf"),
+        )
+    else:
+        st.info("Gere o PDF primeiro para habilitar o download.")
 
 # ======================================================
 # UI — Sidebar
@@ -617,13 +653,7 @@ with st.sidebar:
     report_title = st.text_input("Título (cabeçalho)", value="Prova de Matriz", key=K("e3_title"))
     contact_info = st.text_input("Rodapé (contato)", value="Alta Genetics • www.altagenetics.com.br", key=K("e3_contact"))
     limit_animals = st.number_input("Qtd. de animais no PDF", min_value=1, value=20, step=1, key=K("e3_limit"))
-    st.divider()
-    st.subheader("PDF")
-    logo_file = st.file_uploader("Logotipo (PNG/JPG)", type=["png","jpg","jpeg"])
-    report_title = st.text_input("Título (cabeçalho)", value="Prova de Matriz")
-    contact_info = st.text_input("Rodapé (contato)", value="Alta Genetics • www.altagenetics.com.br")
-    limit_animals = st.number_input("Qtd. de animais no PDF", min_value=1, value=20, step=1)
-
+   
 # ======================================================
 # Corpo — gera PDF
 # ======================================================
