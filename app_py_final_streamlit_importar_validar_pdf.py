@@ -511,6 +511,22 @@ def validate_types_and_ranges(
 
     return pd.DataFrame(issues)
 
+# --- Validação de Tipos/Faixas/Duplicidades ---
+# (garante que issues_df SEMPRE existe, evitando NameError)
+issues_df = pd.DataFrame(columns=["index","coluna","valor","problema","gravidade"])
+
+try:
+    issues_df = validate_types_and_ranges(
+        df=df,
+        today=date.today(),
+        min_birth_year=int(min_birth_year),
+        min_calving_year=int(min_calving_year),
+        extra_ranges=build_extra_ranges() if 'build_extra_ranges' in globals() else {},
+        dup_keys=custom_keys if 'custom_keys' in globals() else None,
+    )
+except Exception as e:
+    st.error(f"❌ Falha na validação: {e}")
+    # mantém issues_df como DataFrame vazio
 
 
 
