@@ -507,7 +507,7 @@ def gerar_pdf_individual(
             label_value("Índice Americano", r.get("us_index")),
             label_value("Meu Índice", r.get("my_index")),
             label_value("Posição Ranking fazenda", r.get("percent_rank")),
-        ]]])
+        ]])
         indices_tbl.setStyle(TableStyle([
             ('BOX', (0,0), (-1,-1), 0.5, colors.lightgrey),
             ('INNERGRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
