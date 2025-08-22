@@ -700,3 +700,68 @@ if logo_file is not None:
     tmp.write(logo_file.getvalue()); tmp.flush()
     st.session_state["e3_logo_path"] = tmp.name
 
+# ======================================================
+# Ações — Gerar e Baixar PDF (somente quando houver bytes)
+# (cole este bloco depois do st.dataframe(df.head(50), ...))
+# ======================================================
+
+# Garante que a função de chave existe
+if 'K' not in globals():
+    APP = "final"
+    def K(name: str) -> str:
+        return f"{APP}:{name}"
+
+# Helper local para gerar PDF (usa o df carregado acima)
+def _make_pdf_bytes_local() -> bytes | None:
+    try:
+        df_local = df  # usa o DataFrame já carregado no fluxo atual
+        if df_local is None or df_local.empty:
+            st.warning("Nenhuma planilha carregada. Importe um CSV/XLSX primeiro.")
+            return None
+
+        logo_path     = st.session_state.get("e3_logo_path")
+        report_title  = st.session_state.get("e3_title", "Prova de Matriz")
+        contact_info  = st.session_state.get("e3_contact", None)
+        limit_animals = st.session_state.get("e3_limit", None)
+        # atenção: usamos a key nova para evitar duplicidade
+        orientation   = st.session_state.get("e3_orient_v2", "Retrato (A4)")
+
+        pdf = gerar_pdf_individual(
+            df=df_local,
+            logo_path=logo_path,
+            title=report_title,
+            contact=contact_info,
+            limit_animais=int(limit_animals) if limit_animals else None,
+            orientation=orientation,
+        )
+        if hasattr(pdf, "getvalue"):  # se for BytesIO
+            pdf = pdf.getvalue()
+        return pdf if isinstance(pdf, (bytes, bytearray)) else None
+
+    except Exception as e:
+        st.error(f"❌ Falha ao gerar PDF: {e}")
+        return None
+
+# UI dos botões
+col_gen, col_dl = st.columns([1, 1])
+
+with col_gen:
+    if st.button("🛠️ Gerar PDF", key=K("e3_btn_pdf_v2")):
+        b = _make_pdf_bytes_local()
+        if b is None:
+            st.error("Não foi possível gerar o PDF (verifique mensagens acima).")
+        else:
+            st.session_state["pdf_e3"] = bytes(b)
+
+with col_dl:
+    pdf_data = st.session_state.get("pdf_e3")
+    if isinstance(pdf_data, (bytes, bytearray)):
+        st.download_button(
+            "📄 Baixar PDF (individual por animal)",
+            data=pdf_data,
+            file_name="relatorio_animais_individual.pdf",
+            mime="application/pdf",
+            key=K("e3_dl_pdf_v2"),
+        )
+    else:
+        st.info("Gere o PDF primeiro para habilitar o download.")
