@@ -465,8 +465,6 @@ def two_col_table(pairs: list[tuple[str, object]]) -> Table:
     ]))
     return t
 
-
-
 # ======================================================
 # Geração do PDF — layout individual conforme mapeamento
 # ======================================================
@@ -476,8 +474,8 @@ def gerar_pdf_individual(
     logo_path: Optional[str],
     title: str,
     contact: Optional[str],
-    limit_animals: Optional[int] = None,
-    orientation: str = "Retrato (A4)"
+    limit_animais: Optional[int] = None,
+    orientation: str = "Retrato (A4)",
 ) -> bytes:
     # tamanho da página
     pagesize = A4 if "Retrato" in orientation else landscape(A4)
@@ -486,9 +484,9 @@ def gerar_pdf_individual(
     doc = SimpleDocTemplate(buf, pagesize=pagesize)
     cb = partial(_draw_header_footer, title=title, contact=contact, logo_path=logo_path)
 
-      # ======= MONTA OS ELEMENTOS DO PDF (um animal por página) =======
+    # ======= MONTA OS ELEMENTOS DO PDF (um animal por página) =======
     elements = []
-    n = len(df) if not limit_animals else min(limit_animals, len(df))
+    n = len(df) if not limit_animais else min(limit_animais, len(df))
 
     for i in range(n):
         r = df.iloc[i]
@@ -604,71 +602,94 @@ def gerar_pdf_individual(
         if i < n - 1:
             elements.append(PageBreak())
 
-# --- Gerar PDF (garante bytes) ---
-def _make_pdf_bytes() -> bytes | None:
+    doc.build(elements, onFirstPage=cb, onLaterPages=cb)
+    pdf = buf.getvalue()
+    buf.close()
+    return pdf
+
+
+# =======================
+# Helpers de estado/gerar
+# =======================
+def _get_active_df():
+    """Retorna o DataFrame carregado mais recente das etapas."""
+    import pandas as pd
+    for key in ("df_etapa3", "df_etapa4b", "df_etapa4", "df_etapa2", "df_etapa1"):
+        obj = st.session_state.get(key)
+        if isinstance(obj, pd.DataFrame) and not obj.empty:
+            return obj
+    return None
+
+def _make_pdf_bytes() -> Optional[bytes]:
     try:
-        # ajuste os argumentos conforme sua função/variáveis
-        pdf_bytes = gerar_pdf_individual(
-            df=df,
-            logo_path=logo_path if 'logo_path' in locals() else None,
-            title=report_title if 'report_title' in locals() else "Relatório",
-            contact=contact_info if 'contact_info' in locals() else None,
-            limit_animals=int(limit_animals) if 'limit_animals' in locals() and limit_animals is not None else None,
-            orientation="Retrato (A4)",  # ou use a variável que você já tem
+        df_local = _get_active_df()
+        if df_local is None:
+            st.warning("Nenhuma planilha carregada. Importe um CSV/XLSX primeiro.")
+            return None
+
+        logo_path     = st.session_state.get("e3_logo_path")
+        report_title  = st.session_state.get("e3_title", "Prova de Matriz")
+        contact_info  = st.session_state.get("e3_contact", None)
+        limit_animals = st.session_state.get("e3_limit", None)
+        orientation   = st.session_state.get("e3_orient", "Retrato (A4)")
+
+        pdf = gerar_pdf_individual(
+            df=df_local,
+            logo_path=logo_path,
+            title=report_title,
+            contact=contact_info,
+            limit_animais=int(limit_animals) if limit_animals else None,
+            orientation=orientation,
         )
-        # só aceitamos bytes/bytearray
-        return pdf_bytes if isinstance(pdf_bytes, (bytes, bytearray)) else None
+        if hasattr(pdf, "getvalue"):  # caso alguém retorne BytesIO
+            pdf = pdf.getvalue()
+        return pdf if isinstance(pdf, (bytes, bytearray)) else None
+
     except Exception as e:
         st.error(f"❌ Falha ao gerar PDF: {e}")
         return None
 
-# Botão para gerar e salvar em session_state
-col_gen, col_dl = st.columns([1,1])
-with col_gen:
-    if st.button("🛠️ Gerar PDF", key=K("e3_btn_pdf")):
-        st.session_state["pdf_e3"] = _make_pdf_bytes()
-
-# Habilita o download apenas se houver bytes válidos
-with col_dl:
-    pdf_data = st.session_state.get("pdf_e3")
-    if isinstance(pdf_data, (bytes, bytearray)):
-        st.download_button(
-            "📄 Baixar PDF (individual por animal)",
-            data=pdf_data,
-            file_name="relatorio_animais.pdf",
-            mime="application/pdf",
-            key=K("e3_dl_pdf"),
-        )
-    else:
-        st.info("Gere o PDF primeiro para habilitar o download.")
 
 # ======================================================
-# UI — Sidebar
+# UI — Sidebar (chaves únicas e orientação do PDF)
 # ======================================================
+if 'K' not in globals():
+    APP = "final"
+    def K(name: str) -> str:
+        return f"{APP}:{name}"
+
 with st.sidebar:
     st.header("Upload & Opções")
     uploaded = st.file_uploader("Planilha (CSV/XLSX)", type=["csv","xlsx","xlsm","xls"], key=K("e3_planilha"))
     excel_sheet = st.text_input("Aba do Excel (opcional)", key=K("e3_sheet"))
+
     logo_file = st.file_uploader("Logotipo (PNG/JPG)", type=["png","jpg","jpeg"], key=K("e3_logo"))
     report_title = st.text_input("Título (cabeçalho)", value="Prova de Matriz", key=K("e3_title"))
     contact_info = st.text_input("Rodapé (contato)", value="Alta Genetics • www.altagenetics.com.br", key=K("e3_contact"))
     limit_animals = st.number_input("Qtd. de animais no PDF", min_value=1, value=20, step=1, key=K("e3_limit"))
-   
+
+    orientation = st.selectbox(
+        "Orientação do PDF",
+        options=["Retrato (A4)", "Paisagem (A4)"],
+        index=0,
+        key=K("e3_orient"),
+    )
+
 # ======================================================
-# Corpo — gera PDF
+# Corpo — Carregar df, mostrar prévia, preparar logo
 # ======================================================
 msg = st.empty()
 
-# Reaproveita df das etapas anteriores se existir
-df: Optional[pd.DataFrame] = None
-if "df_etapa2" in st.session_state:
-    df = st.session_state["df_etapa2"]
-elif "df_etapa1" in st.session_state:
-    df = st.session_state["df_etapa1"]
+# Reaproveita df de etapas anteriores ou faz upload agora
+df: Optional[pd.DataFrame] = st.session_state.get("df_etapa3") or \
+                             st.session_state.get("df_etapa4b") or \
+                             st.session_state.get("df_etapa4") or \
+                             st.session_state.get("df_etapa2") or \
+                             st.session_state.get("df_etapa1")
 
-if uploaded:
+if uploaded is not None:
     try:
-        sheet_arg: str | int | None = excel_sheet if excel_sheet.strip() else None
+        sheet_arg: Optional[str|int] = excel_sheet if excel_sheet.strip() else None
         df = load_table(uploaded, sheet_arg)
         st.session_state["df_etapa3"] = df.copy()
     except Exception as e:
@@ -679,28 +700,40 @@ if df is None:
     st.info("Envie um CSV/XLSX ou carregue antes as Etapas 1/2 no mesmo navegador.")
     st.stop()
 
-msg.success("✅ Dados prontos para gerar PDF.")
+msg.success(f"✅ Dados prontos para gerar PDF. ({len(df)} linhas)")
 
-# Caminho temporário p/ logo
-logo_path = None
-if logo_file:
-    logo_path = f"temp_logo.{logo_file.name.split('.')[-1]}"
-    with open(logo_path, "wb") as f:
-        f.write(logo_file.read())
+# Pré-visualização da planilha na tela
+st.subheader("Pré-visualização da planilha")
+st.dataframe(df.head(50), use_container_width=True)
 
-pdf_bytes = gerar_pdf_individual(
-    df=df,
-    logo_path=logo_path,
-    title=report_title,
-    contact=contact_info,
-    limit_animals=int(limit_animals),
-    orientation=orientation,  # 👈 novo
-)
+# Salva logo em arquivo temporário e guarda o path no estado
+if logo_file is not None:
+    import tempfile
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix="."+logo_file.name.split(".")[-1])
+    tmp.write(logo_file.getvalue()); tmp.flush()
+    st.session_state["e3_logo_path"] = tmp.name
 
+# ======================================================
+# Ações — Gerar e Baixar PDF (somente quando houver bytes)
+# ======================================================
+col_gen, col_dl = st.columns([1, 1])
+with col_gen:
+    if st.button("🛠️ Gerar PDF", key=K("e3_btn_pdf")):
+        b = _make_pdf_bytes()
+        if b is None:
+            st.error("Não foi possível gerar o PDF (verifique mensagens acima).")
+        else:
+            st.session_state["pdf_e3"] = bytes(b)
 
-st.download_button(
-    "📄 Baixar PDF (individual por animal)",
-    data=pdf_bytes,
-    file_name="relatorio_animais_individual.pdf",
-    mime="application/pdf",
-)
+with col_dl:
+    pdf_data = st.session_state.get("pdf_e3")
+    if isinstance(pdf_data, (bytes, bytearray)):
+        st.download_button(
+            "📄 Baixar PDF (individual por animal)",
+            data=pdf_data,
+            file_name="relatorio_animais_individual.pdf",
+            mime="application/pdf",
+            key=K("e3_dl_pdf"),
+        )
+    else:
+        st.info("Gere o PDF primeiro para habilitar o download.")
