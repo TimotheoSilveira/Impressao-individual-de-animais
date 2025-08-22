@@ -12,6 +12,9 @@ from dataclasses import dataclass
 from pandas.api.types import is_datetime64tz_dtype
 import pandas as pd
 
+uploaded = None  # evita NameError caso alguma checagem venha antes da criação do widget
+
+
 def _as_naive_ts(s: pd.Series) -> pd.Series:
     s2 = pd.to_datetime(s, errors="coerce")
     if is_datetime64tz_dtype(s2):
