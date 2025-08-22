@@ -122,9 +122,10 @@ def load_table(uploaded_file, sheet: str | int | None = None) -> pd.DataFrame:
 # -----------------------------------------------------
 with st.sidebar:
     st.header("Upload & Opções")
-    uploaded = st.file_uploader("Planilha (CSV/XLSX)", type=["csv", "xlsx", "xlsm", "xls"])
-    excel_sheet = st.text_input("Aba do Excel (opcional)")
-    preview_rows = st.number_input("Linhas da prévia", min_value=5, max_value=100, value=10, step=5)
+    uploaded = st.file_uploader("Planilha (CSV/XLSX)", type=["csv","xlsx","xlsm","xls"], key=K("e1_planilha"))
+    excel_sheet = st.text_input("Aba do Excel (opcional)", key=K("e1_sheet"))
+    preview_rows = st.number_input("Linhas da prévia", min_value=5, max_value=100, value=10, step=5, key=K("e1_preview"))
+
 
 # -----------------------------------------------------
 # UI — Conteúdo
@@ -383,8 +384,12 @@ def validate_types_and_ranges(
 # ======================================================
 with st.sidebar:
     st.header("Upload & Parâmetros")
-    uploaded = st.file_uploader("Planilha (CSV/XLSX)", type=["csv","xlsx","xlsm","xls"])
-    excel_sheet = st.text_input("Aba do Excel (opcional)")
+    uploaded = st.file_uploader("Planilha (CSV/XLSX)", type=["csv","xlsx","xlsm","xls"], key=K("e2_planilha"))
+    excel_sheet = st.text_input("Aba do Excel (opcional)", key=K("e2_sheet"))
+    min_birth_year = st.number_input("Ano mínimo de nascimento", min_value=1970, max_value=2100, value=1990, key=K("e2_birth_y"))
+    min_calving_year = st.number_input("Ano mínimo de parto", min_value=1990, max_value=2100, value=2000, key=K("e2_calv_y"))
+    custom_keys = st.multiselect("Chaves para detectar duplicados", ["reg_number","farm_eartag_number","customer_id","computer_id"], default=["reg_number","farm_eartag_number"], key=K("e2_dup_keys"))
+    use_extra = st.checkbox("Ativar checagem de faixas plausíveis adicionais", value=True, key=K("e2_extra"))
     st.divider()
     st.subheader("Parâmetros de datas")
     min_birth_year = st.number_input("Ano mínimo de nascimento", min_value=1970, max_value=datetime.now().year, value=1990)
@@ -834,8 +839,12 @@ def gerar_pdf_individual(
 # ======================================================
 with st.sidebar:
     st.header("Upload & Opções")
-    uploaded = st.file_uploader("Planilha (CSV/XLSX)", type=["csv","xlsx","xlsm","xls"])
-    excel_sheet = st.text_input("Aba do Excel (opcional)")
+    uploaded = st.file_uploader("Planilha (CSV/XLSX)", type=["csv","xlsx","xlsm","xls"], key=K("e3_planilha"))
+    excel_sheet = st.text_input("Aba do Excel (opcional)", key=K("e3_sheet"))
+    logo_file = st.file_uploader("Logotipo (PNG/JPG)", type=["png","jpg","jpeg"], key=K("e3_logo"))
+    report_title = st.text_input("Título (cabeçalho)", value="Prova de Matriz", key=K("e3_title"))
+    contact_info = st.text_input("Rodapé (contato)", value="Alta Genetics • www.altagenetics.com.br", key=K("e3_contact"))
+    limit_animals = st.number_input("Qtd. de animais no PDF", min_value=1, value=20, step=1, key=K("e3_limit"))
     st.divider()
     st.subheader("PDF")
     logo_file = st.file_uploader("Logotipo (PNG/JPG)", type=["png","jpg","jpeg"])
@@ -1055,8 +1064,11 @@ GROUPS = {
 # ============== Sidebar ==============
 with st.sidebar:
     st.header("Upload & Filtros")
-    uploaded = st.file_uploader("Planilha (CSV/XLSX)", type=["csv","xlsx","xlsm","xls"])
-    excel_sheet = st.text_input("Aba do Excel (opcional)")
+    uploaded = st.file_uploader("Planilha (CSV/XLSX)", type=["csv","xlsx","xlsm","xls"], key=K("e3b_planilha"))
+    excel_sheet = st.text_input("Aba do Excel (opcional)", key=K("e3b_sheet"))
+    sort_col = st.selectbox("Ordenar por", options=["(nenhum)"] + list(PDF_LABELS.keys()), key=K("e3b_sort"))
+    max_cols_per_page = st.slider("Máx. colunas por página (PDF)", 6, 20, 10, key=K("e3b_maxcols"))
+    limit_rows = st.number_input("Limitar linhas (0 = todas)", min_value=0, value=0, step=10, key=K("e3b_limit"))
     st.divider()
 
     st.subheader("Grupos a incluir")
@@ -1325,8 +1337,10 @@ def load_table(uploaded_file, sheet: str|int|None=None) -> pd.DataFrame:
 # =========================================
 with st.sidebar:
     st.header("Upload & Opções")
-    uploaded = st.file_uploader("Planilha (CSV/XLSX)", type=["csv","xlsx","xlsm","xls"])
-    excel_sheet = st.text_input("Aba do Excel (opcional)")
+    uploaded = st.file_uploader("Planilha (CSV/XLSX)", type=["csv","xlsx","xlsm","xls"], key=K("e4_planilha"))
+    excel_sheet = st.text_input("Aba do Excel (opcional)", key=K("e4_sheet"))
+    sort_col = st.selectbox("Ordenar por (opcional)", options=["(nenhum)"] + sum(GROUPS.values(), []), key=K("e4_sort"))
+    limit_rows = st.number_input("Limitar linhas (0 = todas)", min_value=0, value=0, step=10, key=K("e4_limit"))
     st.divider()
     st.subheader("Grupos a incluir")
     chosen = []
@@ -1588,8 +1602,13 @@ def load_table(uploaded_file, sheet: str|int|None=None) -> pd.DataFrame:
 # ====== Sidebar ======
 with st.sidebar:
     st.header("Upload & Seleção")
-    uploaded = st.file_uploader("Planilha (CSV/XLSX)", type=["csv","xlsx","xlsm","xls"])
-    excel_sheet = st.text_input("Aba do Excel (opcional)")
+    uploaded = st.file_uploader("Planilha (CSV/XLSX)", type=["csv","xlsx","xlsm","xls"], key=K("e4b_planilha"))
+    excel_sheet = st.text_input("Aba do Excel (opcional)", key=K("e4b_sheet"))
+    sort_col = st.selectbox("Ordenar por (opcional)", options=["(nenhum)"] + sum(GROUPS.values(), []), key=K("e4b_sort"))
+    limit_rows = st.number_input("Limitar linhas (0 = todas)", min_value=0, value=0, step=10, key=K("e4b_limit"))
+    report_title = st.text_input("Título do PDF", value="Relatório — Tabela (colunas úteis)", key=K("e4b_title"))
+    contact_info = st.text_input("Rodapé do PDF", value="Alta Genetics • www.altagenetics.com.br", key=K("e4b_contact"))
+    max_cols_per_page = st.slider("Máx. colunas por página", 6, 20, 10, key=K("e4b_maxcols"))
     st.divider()
     st.subheader("Grupos a incluir")
     chosen = []
@@ -1899,9 +1918,18 @@ def load_table(uploaded_file, sheet: str|int|None=None) -> pd.DataFrame:
 # ============================
 with st.sidebar:
     st.header("Upload & Filtros")
-    uploaded = st.file_uploader("Planilha (CSV/XLSX)", type=["csv","xlsx","xlsm","xls"])
-    excel_sheet = st.text_input("Aba do Excel (opcional)")
-
+    uploaded = st.file_uploader("Planilha (CSV/XLSX)", type=["csv","xlsx","xlsm","xls"], key=K("e5_planilha"))
+    excel_sheet = st.text_input("Aba do Excel (opcional)", key=K("e5_sheet"))
+    filt_farm = st.text_input("Filtrar por Fazenda (contém)", key=K("e5_fazenda"))
+    lact_min, lact_max = st.slider("Lactação (intervalo)", 1, 12, (1, 12), key=K("e5_lact"))
+    use_birth = st.checkbox("Filtrar por Data de Nascimento", value=False, key=K("e5_use_birth"))
+    use_calv = st.checkbox("Filtrar por Último Parto", value=False, key=K("e5_use_calv"))
+    group_mode = st.selectbox("Escolha o agrupamento", ["(Geral)", "Fazenda", "Lactação", "Fazenda + Lactação"], key=K("e5_group"))
+    show_mean = st.checkbox("Média", True, key=K("e5_mean"))
+    show_median = st.checkbox("Mediana", True, key=K("e5_median"))
+    show_std = st.checkbox("Desvio Padrão", False, key=K("e5_std"))
+    show_count = st.checkbox("N válidos", True, key=K("e5_count"))
+    decimals = st.number_input("Casas decimais", 0, 6, 2, key=K("e5_dec"))
     st.subheader("Filtros")
     filt_farm = st.text_input("Filtrar por Fazenda (contém)")
     lact_min, lact_max = st.slider("Lactação (intervalo)", 1, 12, (1, 12))
