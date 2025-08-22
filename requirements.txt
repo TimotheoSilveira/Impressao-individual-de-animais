@@ -1,0 +1,7 @@
+# Dependências com versões recomendadas para Streamlit Cloud
+streamlit>=1.36
+pandas>=2.2
+openpyxl>=3.1
+chardet>=5.2
+reportlab>=4.2
+pillow>=10.3
