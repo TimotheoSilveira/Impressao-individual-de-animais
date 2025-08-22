@@ -216,6 +216,10 @@ if uploaded:
         df = load_table(uploaded, sheet_arg)
         st.session_state["df_etapa1"] = df.copy()
 
+        # ✅ Pré-visualização da planilha na tela
+        st.subheader("Pré-visualização da planilha")
+        st.dataframe(df.head(50), use_container_width=True)
+
         msg.success("✅ Importação concluída.")
         st.subheader("Resumo")
         c1, c2 = st.columns(2)
@@ -374,8 +378,8 @@ def load_table(uploaded_file, sheet: str | int | None = None) -> pd.DataFrame:
 # Helpers PDF — estilos, formatação e células
 # ======================================================
 styles = getSampleStyleSheet()
-STYLE_SECTION = ParagraphStyle("section", parent=styles["Heading4"], fontSize=12, spaceAfter=6)
-STYLE_LABEL = ParagraphStyle("label", parent=styles["Normal"], fontSize=9, leading=11)
+STYLE_SECTION = ParagraphStyle("section", parent=styles["Heading4"], fontSize=8, spaceAfter=6)
+STYLE_LABEL = ParagraphStyle("label", parent=styles["Normal"], fontSize=8, leading=11)
 STYLE_SMALL = ParagraphStyle("small", parent=styles["Normal"], fontSize=8, leading=10)
 
 def fmt_value(v) -> str:
@@ -438,6 +442,30 @@ def _draw_header_footer(canvas, doc, title: str, contact: str | None, logo_path:
     canvas.drawRightString(width - 20, 15, f'Página {canvas.getPageNumber()}')
     canvas.restoreState()
 
+def two_col_table(pairs: list[tuple[str, object]]) -> Table:
+    """Tabela de rótulo+valor em duas colunas."""
+    cells, row = [], []
+    for lab, val in pairs:
+        row.append(label_value(lab, val))
+        if len(row) == 2:
+            cells.append(row); row = []
+    if row:  # última linha incompleta
+        row.append(Paragraph("", STYLE_LABEL))
+        cells.append(row)
+
+    t = Table(cells, colWidths=[None, None])
+    t.setStyle(TableStyle([
+        ('BOX', (0,0), (-1,-1), 0.5, colors.lightgrey),
+        ('INNERGRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('LEFTPADDING', (0,0), (-1,-1), 4),
+        ('RIGHTPADDING', (0,0), (-1,-1), 4),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+    ]))
+    return t
+
+
 
 # ======================================================
 # Geração do PDF — layout individual conforme mapeamento
@@ -458,146 +486,119 @@ def gerar_pdf_individual(
     doc = SimpleDocTemplate(buf, pagesize=pagesize)
     cb = partial(_draw_header_footer, title=title, contact=contact, logo_path=logo_path)
 
-    elements = []
-    n = len(df) if not limit_animals else min(limit_animals, len(df))
-    for i in range(n):
-        r = df.iloc[i]
+   elements = []
+n = len(df) if not limit_animals else min(limit_animals, len(df))
+for i in range(n):
+    r = df.iloc[i]
 
-        # ---------- Cabeçalho curto ----------
-        header_tbl = Table([
-            [label_value("Fazenda", r.get("customer_id")), label_value("Código ABCBRH", r.get("reg_number"))]
-        ])
-        header_tbl.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,-1), colors.whitesmoke),
-            ('BOX', (0,0), (-1,-1), 0.5, colors.lightgrey),
-            ('INNERGRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
-            ('TOPPADDING', (0,0), (-1,-1), 6),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-        ]))
-        elements += [Spacer(1, 18), header_tbl, Spacer(1, 8)]
+    # ---------- Cabeçalho curto ----------
+    header_tbl = Table([
+        [label_value("Fazenda", r.get("customer_id")),
+         label_value("Código ABCBRH", r.get("reg_number"))]
+    ])
+    header_tbl.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,-1), colors.whitesmoke),
+        ('BOX', (0,0), (-1,-1), 0.5, colors.lightgrey),
+        ('INNERGRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+    ]))
+    elements += [Spacer(1, 14), header_tbl, Spacer(1, 6)]
 
-        # ---------- Identificação ----------
-        animal_tbl = Table([
-            [label_value("Animal", r.get("farm_eartag_number")),
-             label_value("Data nascimento", r.get("birthdate"))]
-        ])
-        animal_tbl.setStyle(TableStyle([
-            ('BOX', (0,0), (-1,-1), 0.5, colors.lightgrey),
-            ('INNERGRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
-        ]))
-        elements += [animal_tbl, Spacer(1, 8)]
+    # ---------- Identificação ----------
+    animal_tbl = Table([
+        [label_value("Animal", r.get("farm_eartag_number")),
+         label_value("Data nascimento", r.get("birthdate"))]
+    ])
+    animal_tbl.setStyle(TableStyle([
+        ('BOX', (0,0), (-1,-1), 0.5, colors.lightgrey),
+        ('INNERGRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
+    ]))
+    elements += [animal_tbl, Spacer(1, 6)]
 
-        # ---------- Pedigree + Eventos ----------
-        tbl_pedigree = Table([
-            [label_value("Código pai", r.get("sire_code"))],
-            [label_value("Pai", r.get("sire_name"))],
-            [label_value("Avô", r.get("mgs_name"))],
-            [label_value("Bisavô", r.get("mmgs_name"))],
-        ])
-        tbl_pedigree.setStyle(TableStyle([
-            ('BOX', (0,0), (-1,-1), 0.5, colors.lightgrey),
-            ('INNERGRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
-            ('BACKGROUND', (0,0), (-1,-1), colors.whitesmoke),
-        ]))
-        side_right = Table([
-            [label_value("Último parto", r.get("calving_date"))],
-            [label_value("Lactação", r.get("lactation_number"))],
-        ])
-        side_right.setStyle(TableStyle([
-            ('BOX', (0,0), (-1,-1), 0.5, colors.lightgrey),
-            ('INNERGRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
-        ]))
-        two_col = Table([[tbl_pedigree, side_right]], colWidths=[280, None] if pagesize==A4 else [360, None])
-        two_col.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP')]))
-        elements += [two_col, Spacer(1, 10)]
+    # ---------- Pedigree + Eventos ----------
+    tbl_pedigree = Table([
+        [label_value("Código pai", r.get("sire_code"))],
+        [label_value("Pai", r.get("sire_name"))],
+        [label_value("Avô", r.get("mgs_name"))],
+        [label_value("Bisavô", r.get("mmgs_name"))],
+    ])
+    tbl_pedigree.setStyle(TableStyle([
+        ('BOX', (0,0), (-1,-1), 0.5, colors.lightgrey),
+        ('INNERGRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
+        ('BACKGROUND', (0,0), (-1,-1), colors.whitesmoke),
+    ]))
+    side_right = Table([
+        [label_value("Último parto", r.get("calving_date"))],
+        [label_value("Lactação", r.get("lactation_number"))],
+    ])
+    side_right.setStyle(TableStyle([
+        ('BOX', (0,0), (-1,-1), 0.5, colors.lightgrey),
+        ('INNERGRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
+    ]))
+    two_col = Table([[tbl_pedigree, side_right]],
+                    colWidths=[280, None] if pagesize == A4 else [360, None])
+    two_col.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP')]))
+    elements += [two_col, Spacer(1, 6)]
 
-        # ---------- Índices ----------
-        indices_tbl = Table([[
-            label_value("Índice Americano", r.get("us_index")),
-            label_value("Meu Índice", r.get("my_index")),
-            label_value("Posição Ranking fazenda", r.get("percent_rank")),
-        ]])
-        indices_tbl.setStyle(TableStyle([
-            ('BOX', (0,0), (-1,-1), 0.5, colors.lightgrey),
-            ('INNERGRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
-        ]))
-        elements += [indices_tbl, Spacer(1, 10)]
+    # ---------- Métricas NÃO-CONFORMAÇÃO em TABELA (2 colunas) ----------
+    flat_pairs = [
+        ("Meu Índice", r.get("my_index")),
+        ("Índice Americano", r.get("us_index")),
+        ("Posição Ranking fazenda", r.get("percent_rank")),
+        ("Leite (lbs)", r.get("milk")),
+        ("Gordura (lbs)", r.get("fat")),
+        ("Proteína (lbs)", r.get("protein")),
+        ("Vida Produtiva (meses)", r.get("pl")),
+        ("Natimortalidade – Filhas", r.get("dsb")),
+        ("Taxa de Sobrevivência de Vacas (%)", r.get("liv")),
+        ("Natimortalidade - Touro (%)", r.get("ssb")),
+        ("Células Somáticas", r.get("scs")),
+        ("Fac. Parto - Filhas (%)", r.get("dce")),
+        ("Fac. Parto - Touro (%)", r.get("sce")),
+        ("CCR - Vacas (%)", r.get("ccr")),
+        ("DPR - Taxa de Prenhez (%)", r.get("dpr")),
+        ("HCR - Novilhas (%)", r.get("hcr")),
+    ]
+    elements += [two_col_table(flat_pairs), Spacer(1, 4)]
 
-        # ===========================================================
-        #                       GRÁFICOS
-        # ===========================================================
-        # 1) Índices
-        idx_pairs = [
-            ("Índice Americano", r.get("us_index")),
-            ("Meu Índice", r.get("my_index")),
-            ("Posição Ranking fazenda", r.get("percent_rank")),
-        ]
-        img_idx = _bar_image_from_series(idx_pairs, "Índices")
-        if img_idx: elements += [img_idx, Spacer(1, 8)]
+    # ---------- Conformação (gráficos) ----------
+    conform_pairs = [
+        ("Composto Corporal", r.get("bwc")),
+        ("Composto de Úbere", r.get("udc")),
+        ("Composto de Pernas e Pés", r.get("flc")),
+        ("Estatura", r.get("sta")),
+        ("Força Corporal", r.get("str")),
+        ("Profundidade Corporal", r.get("bd")),
+        ("Forma Leiteira", r.get("df")),
+        ("Ângulo de Garupa", r.get("ra")),
+        ("Largura de Garupa", r.get("rw")),
+        ("Ângulo de Casco", r.get("fa")),
+        ("Pernas – Vista Lateral", r.get("rlsv")),
+        ("Pernas – Vista Traseira", r.get("rlrv")),
+        ("Inserção Ant. de Úbere", r.get("fu")),
+        ("Altura de Úbere Posterior", r.get("ruh")),
+        ("Largura de Úbere Posterior", r.get("ruw")),
+        ("Ligamento de Úbere", r.get("uc")),
+        ("Profundidade de Úbere", r.get("ud")),
+        ("Tetos Anteriores (pos.)", r.get("ftp")),
+        ("Tetos Posteriores (pos.)", r.get("rtp")),
+        ("Comprimento de Teto", r.get("tl")),
+    ]
+    # no máx. 12 por gráfico para caber em A4 retrato
+    for chunk in _chunk(conform_pairs, 12):
+        img = _bar_image_from_series(chunk, "Conformação", max_w=480)
+        if img:
+            elements += [img, Spacer(1, 4)]
 
-        # 2) Produção & Vida
-        prod_pairs = [
-            ("Leite (lbs)", r.get("milk")),
-            ("Gordura (lbs)", r.get("fat")),
-            ("Proteína (lbs)", r.get("protein")),
-            ("Vida Produtiva (meses)", r.get("pl")),
-        ]
-        img_prod = _bar_image_from_series(prod_pairs, "Produção & Vida")
-        if img_prod: elements += [img_prod, Spacer(1, 8)]
+    # quebra de página entre animais
+    if i < n - 1:
+        elements.append(PageBreak())
 
-        # 3) Saúde & Reprodução
-        health_pairs = [
-            ("DPR - Taxa de Prenhez (%)", r.get("dpr")),
-            ("Células Somáticas", r.get("scs")),
-            ("Fac. Parto - Touro (%)", r.get("sce")),
-            ("Fac. Parto - Filhas (%)", r.get("dce")),
-            ("Natimort. - Touro (%)", r.get("ssb")),
-            ("Natimort. – Filhas", r.get("dsb")),
-            ("CCR - Vacas (%)", r.get("ccr")),
-            ("HCR - Novilhas (%)", r.get("hcr")),
-            ("Sobrevivência de Vacas (%)", r.get("liv")),
-        ]
-        # divide em 9 por gráfico se necessário
-        for chunk in _chunk(health_pairs, 9):
-            img = _bar_image_from_series(chunk, "Saúde & Reprodução")
-            if img: elements += [img, Spacer(1, 6)]
-
-        # 4) Conformação (muitas variáveis → fatias de 10-12 itens)
-        conform_pairs = [
-            ("Composto Corporal", r.get("bwc")),
-            ("Composto de Úbere", r.get("udc")),
-            ("Composto de Pernas e Pés", r.get("flc")),
-            ("Estatura", r.get("sta")),
-            ("Força Corporal", r.get("str")),
-            ("Profundidade Corporal", r.get("bd")),
-            ("Forma Leiteira", r.get("df")),
-            ("Ângulo de Garupa", r.get("ra")),
-            ("Largura de Garupa", r.get("rw")),
-            ("Ângulo de Casco", r.get("fa")),
-            ("Pernas – Vista Lateral", r.get("rlsv")),
-            ("Pernas – Vista Traseira", r.get("rlrv")),
-            ("Inserção Ant. de Úbere", r.get("fu")),
-            ("Altura de Úbere Posterior", r.get("ruh")),
-            ("Largura de Úbere Posterior", r.get("ruw")),
-            ("Ligamento de Úbere", r.get("uc")),
-            ("Profundidade de Úbere", r.get("ud")),
-            ("Tetos Anteriores (pos.)", r.get("ftp")),
-            ("Tetos Posteriores (pos.)", r.get("rtp")),
-            ("Comprimento de Teto", r.get("tl")),
-        ]
-        for chunk in _chunk(conform_pairs, 12):
-            img = _bar_image_from_series(chunk, "Conformação")
-            if img: elements += [img, Spacer(1, 6)]
-
-        # quebra de página entre animais
-        if i < n - 1:
-            elements.append(PageBreak())
-
-    doc.build(elements, onFirstPage=cb, onLaterPages=cb)
-    pdf = buf.getvalue()
-    buf.close()
-    return pdf
-
+doc.build(elements, onFirstPage=cb, onLaterPages=cb)
+pdf = buf.getvalue()
+buf.close()
+return pdf 
 
 
 # ======================================================
