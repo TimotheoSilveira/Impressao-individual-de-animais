@@ -667,38 +667,46 @@ with st.sidebar:
 # ======================================================
 msg = st.empty()
 
-# Reaproveita df de etapas anteriores ou faz upload agora
-df: Optional[pd.DataFrame] = st.session_state.get("df_etapa3") or \
-                             st.session_state.get("df_etapa4b") or \
-                             st.session_state.get("df_etapa4") or \
-                             st.session_state.get("df_etapa2") or \
-                             st.session_state.get("df_etapa1")
+def _get_active_df():
+    import pandas as pd
+    # retorna o primeiro DataFrame válido encontrado no estado
+    for key in ("df_etapa3", "df_etapa4b", "df_etapa4", "df_etapa2", "df_etapa1"):
+        obj = st.session_state.get(key, None)
+        if isinstance(obj, pd.DataFrame) and not obj.empty:
+            return obj
+    return None
 
+# 1) tenta recuperar de etapas anteriores (sem usar "or" entre DataFrames)
+df: Optional[pd.DataFrame] = _get_active_df()
+
+# 2) upload agora (sobrescreve o df e salva no estado)
 if uploaded is not None:
     try:
-        sheet_arg: Optional[str|int] = excel_sheet if excel_sheet.strip() else None
+        sheet_arg: Optional[str | int] = (excel_sheet.strip() or None)
         df = load_table(uploaded, sheet_arg)
         st.session_state["df_etapa3"] = df.copy()
     except Exception as e:
         msg.error(f"❌ Falha na importação: {e}")
         df = None
 
+# 3) valida existência
 if df is None:
     st.info("Envie um CSV/XLSX ou carregue antes as Etapas 1/2 no mesmo navegador.")
     st.stop()
 
 msg.success(f"✅ Dados prontos para gerar PDF. ({len(df)} linhas)")
 
-# Pré-visualização da planilha na tela
+# 4) pré-visualização na tela
 st.subheader("Pré-visualização da planilha")
 st.dataframe(df.head(50), use_container_width=True)
 
-# Salva logo em arquivo temporário e guarda o path no estado
+# 5) salvar logo em arquivo temporário e registrar caminho
 if logo_file is not None:
     import tempfile
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix="."+logo_file.name.split(".")[-1])
     tmp.write(logo_file.getvalue()); tmp.flush()
     st.session_state["e3_logo_path"] = tmp.name
+
 
 # ======================================================
 # Ações — Gerar e Baixar PDF (somente quando houver bytes)
