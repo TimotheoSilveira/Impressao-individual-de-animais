@@ -190,20 +190,6 @@ def load_table(uploaded_file, sheet: str | int | None = None) -> pd.DataFrame:
 
     return df
 
-# -----------------------------------------------------
-# UI — Sidebar
-# -----------------------------------------------------
-with st.sidebar:
-    # ... (seus widgets já existentes)
-    st.subheader("PDF — orientação")
-    orientation = st.selectbox(
-        "Orientação do PDF",
-        options=["Retrato (A4)", "Paisagem (A4)"],
-        index=0,
-        key=K("e3_orient")
-    )
-
-
 
 # -----------------------------------------------------
 # UI — Conteúdo
@@ -631,7 +617,8 @@ def _make_pdf_bytes() -> Optional[bytes]:
         report_title  = st.session_state.get("e3_title", "Prova de Matriz")
         contact_info  = st.session_state.get("e3_contact", None)
         limit_animals = st.session_state.get("e3_limit", None)
-        orientation   = st.session_state.get("e3_orient", "Retrato (A4)")
+        orientation   = st.session_state.get("e3_orient_v2", "Retrato (A4)")
+
 
         pdf = gerar_pdf_individual(
             df=df_local,
@@ -669,11 +656,11 @@ with st.sidebar:
     limit_animals = st.number_input("Qtd. de animais no PDF", min_value=1, value=20, step=1, key=K("e3_limit"))
 
     orientation = st.selectbox(
-        "Orientação do PDF",
-        options=["Retrato (A4)", "Paisagem (A4)"],
-        index=0,
-        key=K("e3_orient"),
-    )
+    "Orientação do PDF",
+    options=["Retrato (A4)", "Paisagem (A4)"],
+    index=0,
+    key=K("e3_orient_v2"),   # 👈 key nova e única
+)
 
 # ======================================================
 # Corpo — Carregar df, mostrar prévia, preparar logo
@@ -713,27 +700,3 @@ if logo_file is not None:
     tmp.write(logo_file.getvalue()); tmp.flush()
     st.session_state["e3_logo_path"] = tmp.name
 
-# ======================================================
-# Ações — Gerar e Baixar PDF (somente quando houver bytes)
-# ======================================================
-col_gen, col_dl = st.columns([1, 1])
-with col_gen:
-    if st.button("🛠️ Gerar PDF", key=K("e3_btn_pdf")):
-        b = _make_pdf_bytes()
-        if b is None:
-            st.error("Não foi possível gerar o PDF (verifique mensagens acima).")
-        else:
-            st.session_state["pdf_e3"] = bytes(b)
-
-with col_dl:
-    pdf_data = st.session_state.get("pdf_e3")
-    if isinstance(pdf_data, (bytes, bytearray)):
-        st.download_button(
-            "📄 Baixar PDF (individual por animal)",
-            data=pdf_data,
-            file_name="relatorio_animais_individual.pdf",
-            mime="application/pdf",
-            key=K("e3_dl_pdf"),
-        )
-    else:
-        st.info("Gere o PDF primeiro para habilitar o download.")
