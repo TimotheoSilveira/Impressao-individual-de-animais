@@ -8,12 +8,24 @@ from typing import Optional
 import pandas as pd
 import streamlit as st
 
+from pandas.api.types import is_datetime64tz_dtype, is_datetime64_any_dtype
+import pandas as pd
+
+
 # --- chaves únicas para widgets (evita conflito de IDs) ---
 APP = "final"  # pode trocar por outro prefixo único do seu app
 
 def K(name: str) -> str:
     """Gera uma chave única e estável para widgets do Streamlit."""
     return f"{APP}:{name}"
+
+def _as_naive_ts(s: pd.Series) -> pd.Series:
+    """Converte para Timestamp sem fuso e normaliza para meia-noite."""
+    s2 = pd.to_datetime(s, errors="coerce")
+    if is_datetime64tz_dtype(s2):
+        # remove timezone (UTC → naive)
+        s2 = s2.dt.tz_convert(None)
+    return s2.dt.normalize()
 
 # -----------------------------------------------------
 # Config da página
@@ -311,88 +323,31 @@ class RangeRule:
     high: Optional[float] = None
     label: str = ""
 
-def validate_types_and_ranges(
-    df: pd.DataFrame,
-    today: date,
-    min_birth_year: int,
-    min_calving_year: int,
-    extra_ranges: Dict[str, RangeRule] | None = None,
-    dup_keys: List[str] | None = None,
-) -> pd.DataFrame:
-    """Retorna um DataFrame de issues: index, coluna, valor, problema, gravidade."""
-    issues = []
-    def add_issue(idx, col, val, msg, sev="erro"):
-        issues.append({"index": int(idx), "coluna": col, "valor": val, "problema": msg, "gravidade": sev})
+    # ----- datas plausíveis (usar Timestamp naive) -----
+    min_birth_ts   = pd.Timestamp(min_birth_year, 1, 1)
+    min_calving_ts = pd.Timestamp(min_calving_year, 1, 1)
+    today_ts       = pd.Timestamp(today)  # today é date → vira Timestamp
 
-    # percent_rank
-    if "percent_rank" in df.columns:
-        s = df["percent_rank"]
-        mask = s.notna() & ((s < 0) | (s > 100))
-        for idx, val in s[mask].items():
-            add_issue(idx, "percent_rank", val, "Fora do intervalo [0, 100]")
-
-    # lactation_number >= 1 e inteiro
-    if "lactation_number" in df.columns:
-        s = df["lactation_number"]
-        mask = s.notna() & ((s < 1) | (s.astype(float) % 1 != 0))
-        for idx, val in s[mask].items():
-            add_issue(idx, "lactation_number", val, "Deve ser inteiro ≥ 1")
-
-    # datas plausíveis
-    min_birth = date(min_birth_year, 1, 1)
-    min_calving = date(min_calving_year, 1, 1)
     if "birthdate" in df.columns:
-        s = df["birthdate"]
-        mask = s.notna() & ((s.dt.date < min_birth) | (s.dt.date > today))
+        s = _as_naive_ts(df["birthdate"])
+        mask = s.notna() & ((s < min_birth_ts) | (s > today_ts))
         for idx, val in s[mask].items():
-            add_issue(idx, "birthdate", str(val), f"Fora de {min_birth}..{today}")
+            add_issue(idx, "birthdate", str(val), f"Fora de {min_birth_ts.date()}..{today_ts.date()}")
+
     if "calving_date" in df.columns:
-        s = df["calving_date"]
-        mask = s.notna() & ((s.dt.date < min_calving) | (s.dt.date > today))
+        s = _as_naive_ts(df["calving_date"])
+        mask = s.notna() & ((s < min_calving_ts) | (s > today_ts))
         for idx, val in s[mask].items():
-            add_issue(idx, "calving_date", str(val), f"Fora de {min_calving}..{today}")
-    if set(["birthdate","calving_date"]).issubset(df.columns):
-        s = df[["birthdate","calving_date"]].dropna()
-        mask = s["calving_date"] < s["birthdate"]
-        for idx, row in s[mask].iterrows():
-            add_issue(idx, "calving_date", str(row["calving_date"]), "Calving < Birth (inconsistente)")
+            add_issue(idx, "calving_date", str(val), f"Fora de {min_calving_ts.date()}..{today_ts.date()}")
 
-    # SCS alertas (não é hard fail, tratamos como alerta)
-    if "scs" in df.columns:
-        s = df["scs"]
-        for idx, val in s[s > 3.0].items():
-            add_issue(idx, "scs", val, "> 3,00 (evitar recomendar)", sev="alerta")
-        for idx, val in s[(s > 2.8) & (s <= 3.0)].items():
-            add_issue(idx, "scs", val, "> 2,80 (atenção)", sev="alerta")
+    if set(["birthdate", "calving_date"]).issubset(df.columns):
+        b = _as_naive_ts(df["birthdate"])
+        c = _as_naive_ts(df["calving_date"])
+        both = pd.DataFrame({"b": b, "c": c}).dropna()
+        mask = both["c"] < both["b"]
+        for idx, row in both[mask].iterrows():
+            add_issue(idx, "calving_date", str(row["c"]), "Calving < Birth (inconsistente)")
 
-    # IDs vazios
-    for idc in ("reg_number","farm_eartag_number"):
-        if idc in df.columns:
-            s = df[idc].astype("string")
-            mask = s.isna() | (s.str.strip() == "")
-            for idx, val in s[mask].items():
-                add_issue(idx, idc, val, "Identificador vazio")
-
-    # Duplicidades
-    keys = [c for c in (dup_keys or ["reg_number","farm_eartag_number"]) if c in df.columns]
-    if keys:
-        dup_mask = df.duplicated(subset=keys, keep=False)
-        for idx in df.index[dup_mask]:
-            add_issue(idx, "+".join(keys), "duplicado", "Possível duplicidade pela(s) chave(s)")
-
-    # Faixas adicionais (plausibilidade) — opcionais e configuráveis
-    extra_ranges = extra_ranges or {}
-    for col, rule in extra_ranges.items():
-        if (col in df.columns) and (rule.low is not None or rule.high is not None):
-            s = df[col]
-            mask = s.notna() & (
-                ((rule.low is not None) & (s < rule.low)) |
-                ((rule.high is not None) & (s > rule.high))
-            )
-            for idx, val in s[mask].items():
-                add_issue(idx, col, val, f"Fora da faixa {rule.low}..{rule.high}", sev="alerta")
-
-    return pd.DataFrame(issues)
 
 # ======================================================
 # Sidebar
