@@ -8,8 +8,14 @@ from typing import Optional
 import pandas as pd
 import streamlit as st
 
-from pandas.api.types import is_datetime64tz_dtype, is_datetime64_any_dtype
-import pandas as pd
+from pandas.api.types import is_datetime64tz_dtype  # <- novo
+
+def _as_naive_ts(s: pd.Series) -> pd.Series:
+    """Converte série de datas para Timestamp 'naive' (sem fuso) e normaliza."""
+    s2 = pd.to_datetime(s, errors="coerce")
+    if is_datetime64tz_dtype(s2):
+        s2 = s2.dt.tz_convert(None)
+    return s2.dt.normalize()
 
 
 # --- chaves únicas para widgets (evita conflito de IDs) ---
@@ -324,7 +330,6 @@ class RangeRule:
     label: str = ""
 
     # ----- datas plausíveis (usar Timestamp naive) -----
-    min_birth_ts   = pd.Timestamp(min_birth_year, 1, 1)
     min_calving_ts = pd.Timestamp(min_calving_year, 1, 1)
     today_ts       = pd.Timestamp(today)  # today é date → vira Timestamp
 
@@ -442,15 +447,96 @@ if unknown:
         st.code(", ".join(unknown))
 
 # Regras
-st.subheader("Validação de Tipos/Faixas/Duplicidades")
-issues_df = validate_types_and_ranges(
-    df=df,
-    today=date.today(),
-    min_birth_year=int(min_birth_year),
-    min_calving_year=int(min_calving_year),
-    extra_ranges=build_extra_ranges(),
-    dup_keys=custom_keys,
-)
+def validate_types_and_ranges(
+    df: pd.DataFrame,
+    today: date,
+    min_birth_year: int,
+    min_calving_year: int,
+    extra_ranges: Dict[str, "RangeRule"] | None = None,
+    dup_keys: List[str] | None = None,
+) -> pd.DataFrame:
+    """Retorna um DataFrame de issues: index, coluna, valor, problema, gravidade."""
+    issues = []
+
+    def add_issue(idx, col, val, msg, sev="erro"):
+        issues.append({"index": int(idx), "coluna": col, "valor": val, "problema": msg, "gravidade": sev})
+
+    # --- percent_rank em [0, 100] ---
+    if "percent_rank" in df.columns:
+        s = pd.to_numeric(df["percent_rank"], errors="coerce")
+        mask = s.notna() & ((s < 0) | (s > 100))
+        for idx, val in s[mask].items():
+            add_issue(idx, "percent_rank", val, "Fora do intervalo [0, 100]")
+
+    # --- lactation_number inteiro >= 1 ---
+    if "lactation_number" in df.columns:
+        s = pd.to_numeric(df["lactation_number"], errors="coerce")
+        mask = s.notna() & ((s < 1) | (s % 1 != 0))
+        for idx, val in s[mask].items():
+            add_issue(idx, "lactation_number", val, "Deve ser inteiro ≥ 1")
+
+    # --- datas plausíveis (usar Timestamp naive) ---
+    min_birth_ts   = pd.Timestamp(min_birth_year, 1, 1)
+    min_calving_ts = pd.Timestamp(min_calving_year, 1, 1)
+    today_ts       = pd.Timestamp(today)
+
+    if "birthdate" in df.columns:
+        s = _as_naive_ts(df["birthdate"])
+        mask = s.notna() & ((s < min_birth_ts) | (s > today_ts))
+        for idx, val in s[mask].items():
+            add_issue(idx, "birthdate", str(val), f"Fora de {min_birth_ts.date()}..{today_ts.date()}")
+
+    if "calving_date" in df.columns:
+        s = _as_naive_ts(df["calving_date"])
+        mask = s.notna() & ((s < min_calving_ts) | (s > today_ts))
+        for idx, val in s[mask].items():
+            add_issue(idx, "calving_date", str(val), f"Fora de {min_calving_ts.date()}..{today_ts.date()}")
+
+    if {"birthdate","calving_date"}.issubset(df.columns):
+        b = _as_naive_ts(df["birthdate"])
+        c = _as_naive_ts(df["calving_date"])
+        both = pd.DataFrame({"b": b, "c": c}).dropna()
+        mask = both["c"] < both["b"]
+        for idx, row in both[mask].iterrows():
+            add_issue(idx, "calving_date", str(row["c"]), "Calving < Birth (inconsistente)")
+
+    # --- alertas de SCS ---
+    if "scs" in df.columns:
+        s = pd.to_numeric(df["scs"], errors="coerce")
+        for idx, val in s[s > 3.0].items():
+            add_issue(idx, "scs", val, "> 3,00 (evitar recomendar)", sev="alerta")
+        for idx, val in s[(s > 2.8) & (s <= 3.0)].items():
+            add_issue(idx, "scs", val, "> 2,80 (atenção)", sev="alerta")
+
+    # --- IDs vazios ---
+    for idc in ("reg_number","farm_eartag_number"):
+        if idc in df.columns:
+            s = df[idc].astype("string")
+            mask = s.isna() | (s.str.strip() == "")
+            for idx, val in s[mask].items():
+                add_issue(idx, idc, val, "Identificador vazio")
+
+    # --- Duplicidades ---
+    keys = [c for c in (dup_keys or ["reg_number","farm_eartag_number"]) if c in df.columns]
+    if keys:
+        dup_mask = df.duplicated(subset=keys, keep=False)
+        for idx in df.index[dup_mask]:
+            add_issue(idx, "+".join(keys), "duplicado", "Possível duplicidade pela(s) chave(s)")
+
+    # --- Faixas adicionais (opcionais) ---
+    extra_ranges = extra_ranges or {}
+    for col, rule in extra_ranges.items():
+        if col in df.columns and (rule.low is not None or rule.high is not None):
+            s = pd.to_numeric(df[col], errors="coerce")
+            mask = s.notna() & (
+                ((rule.low is not None) & (s < rule.low)) |
+                ((rule.high is not None) & (s > rule.high))
+            )
+            for idx, val in s[mask].items():
+                add_issue(idx, col, val, f"Fora da faixa {rule.low}..{rule.high}", sev="alerta")
+
+    return pd.DataFrame(issues)
+
 
 if issues_df.empty:
     st.success("Nenhuma inconsistência detectada pelas regras atuais.")
