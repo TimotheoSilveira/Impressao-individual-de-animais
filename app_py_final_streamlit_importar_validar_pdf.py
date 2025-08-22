@@ -1,7 +1,6 @@
 # app_etapa1.py — Etapa 1: Importação e Pré-visualização
 # Objetivo: subir planilha CSV/XLSX, normalizar cabeçalhos e exibir uma prévia.
 
-from __future__ import annotations
 import io
 import re
 from typing import Optional
@@ -167,7 +166,6 @@ else:
 # app_etapa2.py — Etapa 2: Validação de dados
 # Objetivo: importar planilha, validar esquema/tipos/faixas, checar duplicidades e exportar relatório de inconsistências.
 
-from __future__ import annotations
 import io
 import re
 from dataclasses import dataclass
@@ -514,7 +512,6 @@ else:
 # - Gera um PDF em A4 paisagem, 1 animal por página, com logo opcional
 # - Rótulos e posições conforme tabela enviada (substituições OPI/Méritos/Trato/Índice Saúde)
 
-from __future__ import annotations
 import io
 import re
 from datetime import datetime, date
@@ -900,7 +897,6 @@ st.download_button(
 # - Renomeia cabeçalhos no PDF conforme seu mapeamento
 # - Divide em múltiplas páginas se muitas colunas (controle "Máx. colunas por página")
 
-from __future__ import annotations
 import io, re
 from typing import Optional, Iterable, List
 from datetime import datetime
@@ -1185,7 +1181,6 @@ st.download_button(
 # Lê CSV/XLSX (ou reaproveita df das etapas anteriores via session_state)
 # Gera um .xlsx em memória com abas e rótulos conforme seu mapeamento
 
-from __future__ import annotations
 import io, re
 from typing import Optional, Dict, List
 from datetime import datetime
@@ -1449,7 +1444,6 @@ st.download_button(
 # - Gera XLSX (abas por grupo) e PDF (tabela) com os mesmos rótulos
 # - Disponibiliza downloads individuais e um ZIP contendo ambos
 
-from __future__ import annotations
 import io, re, zipfile
 from typing import Optional, Dict, List, Iterable
 from datetime import datetime
@@ -1794,7 +1788,6 @@ with c3:
 # - Calcula médias (e estatísticas) gerais ou por grupos
 # - Exporta CSV/XLSX dos agregados
 
-from __future__ import annotations
 import io, re
 from typing import Optional, Dict, List
 from datetime import date
