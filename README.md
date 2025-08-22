@@ -78,6 +78,4 @@ Acesse a URL local exibida pelo Streamlit.
 
 Todos os dados enviados são processados na sessão do app. Em hospedagens públicas, evite subir dados sensíveis.
 
----
 
-Se quiser, posso adicionar um `runtime.txt` e um `.gitignore` prontos. Também posso converter a exportação para **Excel (XLSX)** com múltiplas abas (ex.: por `percent_rank`).
