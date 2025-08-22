@@ -13,11 +13,48 @@ from pandas.api.types import is_datetime64tz_dtype
 import pandas as pd
 
 def _as_naive_ts(s: pd.Series) -> pd.Series:
-    """Converte série de datas para Timestamp 'naive' (sem timezone) e normaliza."""
     s2 = pd.to_datetime(s, errors="coerce")
     if is_datetime64tz_dtype(s2):
         s2 = s2.dt.tz_convert(None)
     return s2.dt.normalize()
+
+def _bar_image_from_series(pairs: list[tuple[str, float]], title: str, max_w: int = 520) -> Image | None:
+    """Cria gráfico de barras horizontal (matplotlib) e retorna um Flowable Image para ReportLab."""
+    # filtra pares válidos e ordena por valor absoluto (desc)
+    clean = [(lab, float(v)) for lab, v in pairs if v is not None and pd.notna(v)]
+    if not clean:
+        return None
+    clean.sort(key=lambda t: abs(t[1]), reverse=True)
+
+    labels = [p[0] for p in clean]
+    vals   = [p[1] for p in clean]
+
+    # tamanho dinâmico conforme quantidade de barras
+    h_inches = max(2.8, 0.35 * len(clean))  # 0.35" por barra, mínimo 2.8"
+    fig, ax = plt.subplots(figsize=(8, h_inches), dpi=200)
+
+    ax.barh(labels, vals)                 # barras horizontais
+    ax.axvline(0, linewidth=0.8, color="black")  # linha de referência em 0
+    ax.grid(axis="x", linestyle="--", alpha=0.4)
+    ax.set_title(title)
+    ax.invert_yaxis()                     # item mais "importante" no topo
+    # rótulos numéricos
+    for y, v in enumerate(vals):
+        ax.text(v, y, f" {v:.2f}", va="center", fontsize=8)
+
+    fig.tight_layout()
+    bio = io.BytesIO()
+    fig.savefig(bio, format="png", bbox_inches="tight")
+    plt.close(fig)
+    bio.seek(0)
+    # dimensiona imagem para caber na largura útil do PDF (aprox.)
+    img = Image(bio)
+    img._restrictSize(max_w, 9999)  # largura máx., altura automática
+    return img
+
+def _chunk(lst: list, n: int) -> list[list]:
+    return [lst[i:i+n] for i in range(0, len(lst), n)]
+
 
 
 # --- chaves únicas para widgets (evita conflito de IDs) ---
@@ -148,10 +185,15 @@ def load_table(uploaded_file, sheet: str | int | None = None) -> pd.DataFrame:
 # UI — Sidebar
 # -----------------------------------------------------
 with st.sidebar:
-    st.header("Upload & Opções")
-    uploaded = st.file_uploader("Planilha (CSV/XLSX)", type=["csv","xlsx","xlsm","xls"], key=K("e1_planilha"))
-    excel_sheet = st.text_input("Aba do Excel (opcional)", key=K("e1_sheet"))
-    preview_rows = st.number_input("Linhas da prévia", min_value=5, max_value=100, value=10, step=5, key=K("e1_preview"))
+    # ... (seus widgets já existentes)
+    st.subheader("PDF — orientação")
+    orientation = st.selectbox(
+        "Orientação do PDF",
+        options=["Retrato (A4)", "Paisagem (A4)"],
+        index=0,
+        key=K("e3_orient")
+    )
+
 
 
 # -----------------------------------------------------
@@ -206,6 +248,10 @@ from typing import Optional, Iterable, Tuple, List
 import pandas as pd
 import streamlit as st
 
+import matplotlib.pyplot as plt
+from pandas.api.types import is_datetime64tz_dtype
+
+
 # --- chaves únicas para widgets (evita conflito de IDs) ---
 APP = "final"  # pode trocar por outro prefixo único do seu app
 
@@ -228,6 +274,8 @@ except ModuleNotFoundError:
         "Dependência ausente para gerar PDF. Adicione **reportlab** e **pillow** no requirements.txt e rode novamente."
     )
     st.stop()
+
+
 
 # ======================================================
 # Config da página
@@ -359,7 +407,7 @@ def grid_from_pairs(pairs: List[Tuple[str, object]], cols: int = 3) -> Table:
     return t
 
 def _draw_header_footer(canvas, doc, title: str, contact: str | None, logo_path: str | None):
-    width, height = landscape(A4)
+    width, height = doc.pagesize  # 👈 usa o tamanho atual (A4 retrato ou paisagem)
     canvas.saveState()
     y_top = height - 20
     try:
@@ -381,20 +429,24 @@ def _draw_header_footer(canvas, doc, title: str, contact: str | None, logo_path:
     canvas.drawRightString(width - 20, 15, f'Página {canvas.getPageNumber()}')
     canvas.restoreState()
 
+
 # ======================================================
 # Geração do PDF — layout individual conforme mapeamento
 # ======================================================
+
 def gerar_pdf_individual(
     df: pd.DataFrame,
     logo_path: Optional[str],
     title: str,
     contact: Optional[str],
-    limit_animals: Optional[int] = None
+    limit_animals: Optional[int] = None,
+    orientation: str = "Retrato (A4)"
 ) -> bytes:
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=landscape(A4))
+    # tamanho da página
+    pagesize = A4 if "Retrato" in orientation else landscape(A4)
 
-    # Cabeçalho/rodapé
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=pagesize)
     cb = partial(_draw_header_footer, title=title, contact=contact, logo_path=logo_path)
 
     elements = []
@@ -402,10 +454,9 @@ def gerar_pdf_individual(
     for i in range(n):
         r = df.iloc[i]
 
-        # Topo: Prova de Matriz — Fazenda / Código ABCBRH
+        # ---------- Cabeçalho curto ----------
         header_tbl = Table([
-            [label_value("Fazenda", r.get("customer_id")),
-             label_value("Código ABCBRH", r.get("reg_number"))]
+            [label_value("Fazenda", r.get("customer_id")), label_value("Código ABCBRH", r.get("reg_number"))]
         ])
         header_tbl.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,-1), colors.whitesmoke),
@@ -416,7 +467,7 @@ def gerar_pdf_individual(
         ]))
         elements += [Spacer(1, 18), header_tbl, Spacer(1, 8)]
 
-        # Linha Animal + Data nascimento (ao lado)
+        # ---------- Identificação ----------
         animal_tbl = Table([
             [label_value("Animal", r.get("farm_eartag_number")),
              label_value("Data nascimento", r.get("birthdate"))]
@@ -427,7 +478,7 @@ def gerar_pdf_individual(
         ]))
         elements += [animal_tbl, Spacer(1, 8)]
 
-        # Pedigree (esq) + Último parto / Lactação (dir)
+        # ---------- Pedigree + Eventos ----------
         tbl_pedigree = Table([
             [label_value("Código pai", r.get("sire_code"))],
             [label_value("Pai", r.get("sire_name"))],
@@ -447,73 +498,89 @@ def gerar_pdf_individual(
             ('BOX', (0,0), (-1,-1), 0.5, colors.lightgrey),
             ('INNERGRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
         ]))
-        two_col = Table([[tbl_pedigree, side_right]], colWidths=[360, None])
+        two_col = Table([[tbl_pedigree, side_right]], colWidths=[280, None] if pagesize==A4 else [360, None])
         two_col.setStyle(TableStyle([('VALIGN', (0,0), (-1,-1), 'TOP')]))
         elements += [two_col, Spacer(1, 10)]
 
-        # Índices — substituem OPI / Mérito Líquido / Mérito Queijo
+        # ---------- Índices ----------
         indices_tbl = Table([[
             label_value("Índice Americano", r.get("us_index")),
             label_value("Meu Índice", r.get("my_index")),
             label_value("Posição Ranking fazenda", r.get("percent_rank")),
-        ]])
+        ]]])
         indices_tbl.setStyle(TableStyle([
             ('BOX', (0,0), (-1,-1), 0.5, colors.lightgrey),
             ('INNERGRID', (0,0), (-1,-1), 0.25, colors.lightgrey),
         ]))
         elements += [indices_tbl, Spacer(1, 10)]
 
-        # Produção & Vida
-        elements.append(Paragraph("Produção & Vida", STYLE_SECTION))
+        # ===========================================================
+        #                       GRÁFICOS
+        # ===========================================================
+        # 1) Índices
+        idx_pairs = [
+            ("Índice Americano", r.get("us_index")),
+            ("Meu Índice", r.get("my_index")),
+            ("Posição Ranking fazenda", r.get("percent_rank")),
+        ]
+        img_idx = _bar_image_from_series(idx_pairs, "Índices")
+        if img_idx: elements += [img_idx, Spacer(1, 8)]
+
+        # 2) Produção & Vida
         prod_pairs = [
-            ("Leite (lbs)", r.get("milk")),            # R / PTALeite → Leite (lbs)
-            ("Gordura (lbs)", r.get("fat")),           # T
-            ("Proteína (lbs)", r.get("protein")),      # V
-            ("Vida Produtiva (meses)", r.get("pl")),   # X
+            ("Leite (lbs)", r.get("milk")),
+            ("Gordura (lbs)", r.get("fat")),
+            ("Proteína (lbs)", r.get("protein")),
+            ("Vida Produtiva (meses)", r.get("pl")),
         ]
-        elements += [grid_from_pairs(prod_pairs, cols=4), Spacer(1, 6)]
+        img_prod = _bar_image_from_series(prod_pairs, "Produção & Vida")
+        if img_prod: elements += [img_prod, Spacer(1, 8)]
 
-        # Saúde & Reprodução (com substituições solicitadas)
-        elements.append(Paragraph("Saúde & Reprodução", STYLE_SECTION))
+        # 3) Saúde & Reprodução
         health_pairs = [
-            ("DPR - Taxa de Prenhez (%)", r.get("dpr")),                     # Z
-            ("Células Somáticas", r.get("scs")),                              # AB
-            ("Facilidade de Parto - Touro(%)", r.get("sce")),                 # AD
-            ("Facilidade de Parto - Filhas (%)", r.get("dce")),               # AF (substitui 'Trato Economizado')
-            ("Natimortalidade - Touro (%)", r.get("ssb")),                    # AH (substitui 'Índice de Saúde')
-            ("Natimortalidade – Filhas", r.get("dsb")),                       # AJ (substitui 'Taxa de Sobrevivência de Novilhas')
-            ("CCR - Taxa de Concepção de Vacas (%)", r.get("ccr")),           # AL
-            ("HCR - Taxa de Concepção de Novilhas (%)", r.get("hcr")),        # AN
-            ("Taxa de Sobrevivência de Vacas (%)", r.get("liv")),             # AP
+            ("DPR - Taxa de Prenhez (%)", r.get("dpr")),
+            ("Células Somáticas", r.get("scs")),
+            ("Fac. Parto - Touro (%)", r.get("sce")),
+            ("Fac. Parto - Filhas (%)", r.get("dce")),
+            ("Natimort. - Touro (%)", r.get("ssb")),
+            ("Natimort. – Filhas", r.get("dsb")),
+            ("CCR - Vacas (%)", r.get("ccr")),
+            ("HCR - Novilhas (%)", r.get("hcr")),
+            ("Sobrevivência de Vacas (%)", r.get("liv")),
         ]
-        elements += [grid_from_pairs(health_pairs, cols=3), Spacer(1, 6)]
+        # divide em 9 por gráfico se necessário
+        for chunk in _chunk(health_pairs, 9):
+            img = _bar_image_from_series(chunk, "Saúde & Reprodução")
+            if img: elements += [img, Spacer(1, 6)]
 
-        # Conformação (Tipo)
-        elements.append(Paragraph("Conformação", STYLE_SECTION))
-        type_pairs = [
-            ("Composto Corporal", r.get("bwc")),                 # AR
-            ("Composto de Úbere", r.get("udc")),                 # AT
-            ("Composto de Pernas e Pés", r.get("flc")),          # AV
-            ("Estatura", r.get("sta")),                          # AX
-            ("Força Corporal", r.get("str")),                    # AZ
-            ("Profundidade Corporal", r.get("bd")),              # BB
-            ("Forma Leiteira", r.get("df")),                     # BD
-            ("Ângulo de Garupa", r.get("ra")),                   # BF
-            ("Largura de Garupa", r.get("rw")),                  # BH
-            ("Ângulo de Casco", r.get("fa")),                    # BJ
-            ("Pernas Traseiras - Vista Lateral", r.get("rlsv")), # BL
-            ("Pernas Traseiras - Vista Traseira", r.get("rlrv")),# BN
-            ("Inserção Anterior de Úbere", r.get("fu")),         # BP
-            ("Altura de Úbere Posterior", r.get("ruh")),         # BR
-            ("Largura de Úbere Posterior", r.get("ruw")),        # BT
-            ("Ligamento de Úbere", r.get("uc")),                 # BV
-            ("Profundidade de Úbere", r.get("ud")),              # BX
-            ("Posicionamento dos Tetos Anteriores", r.get("ftp")),# BZ
-            ("Posicionamento dos Tetos Posteriores", r.get("rtp")),# CB
-            ("Comprimento de Teto", r.get("tl")),                # CD
+        # 4) Conformação (muitas variáveis → fatias de 10-12 itens)
+        conform_pairs = [
+            ("Composto Corporal", r.get("bwc")),
+            ("Composto de Úbere", r.get("udc")),
+            ("Composto de Pernas e Pés", r.get("flc")),
+            ("Estatura", r.get("sta")),
+            ("Força Corporal", r.get("str")),
+            ("Profundidade Corporal", r.get("bd")),
+            ("Forma Leiteira", r.get("df")),
+            ("Ângulo de Garupa", r.get("ra")),
+            ("Largura de Garupa", r.get("rw")),
+            ("Ângulo de Casco", r.get("fa")),
+            ("Pernas – Vista Lateral", r.get("rlsv")),
+            ("Pernas – Vista Traseira", r.get("rlrv")),
+            ("Inserção Ant. de Úbere", r.get("fu")),
+            ("Altura de Úbere Posterior", r.get("ruh")),
+            ("Largura de Úbere Posterior", r.get("ruw")),
+            ("Ligamento de Úbere", r.get("uc")),
+            ("Profundidade de Úbere", r.get("ud")),
+            ("Tetos Anteriores (pos.)", r.get("ftp")),
+            ("Tetos Posteriores (pos.)", r.get("rtp")),
+            ("Comprimento de Teto", r.get("tl")),
         ]
-        elements.append(grid_from_pairs(type_pairs, cols=4))
+        for chunk in _chunk(conform_pairs, 12):
+            img = _bar_image_from_series(chunk, "Conformação")
+            if img: elements += [img, Spacer(1, 6)]
 
+        # quebra de página entre animais
         if i < n - 1:
             elements.append(PageBreak())
 
@@ -521,6 +588,8 @@ def gerar_pdf_individual(
     pdf = buf.getvalue()
     buf.close()
     return pdf
+
+
 
 # ======================================================
 # UI — Sidebar
@@ -580,7 +649,9 @@ pdf_bytes = gerar_pdf_individual(
     title=report_title,
     contact=contact_info,
     limit_animals=int(limit_animals),
+    orientation=orientation,  # 👈 novo
 )
+
 
 st.download_button(
     "📄 Baixar PDF (individual por animal)",
