@@ -8,6 +8,13 @@ from typing import Optional
 import pandas as pd
 import streamlit as st
 
+# --- chaves únicas para widgets (evita conflito de IDs) ---
+APP = "final"  # pode trocar por outro prefixo único do seu app
+
+def K(name: str) -> str:
+    """Gera uma chave única e estável para widgets do Streamlit."""
+    return f"{APP}:{name}"
+
 # -----------------------------------------------------
 # Config da página
 # -----------------------------------------------------
@@ -167,6 +174,7 @@ else:
 # app_etapa2.py — Etapa 2: Validação de dados
 # Objetivo: importar planilha, validar esquema/tipos/faixas, checar duplicidades e exportar relatório de inconsistências.
 
+
 import io
 import re
 from dataclasses import dataclass
@@ -175,6 +183,13 @@ from typing import Optional, Tuple, Dict, List
 
 import pandas as pd
 import streamlit as st
+
+# --- chaves únicas para widgets (evita conflito de IDs) ---
+APP = "final"  # pode trocar por outro prefixo único do seu app
+
+def K(name: str) -> str:
+    """Gera uma chave única e estável para widgets do Streamlit."""
+    return f"{APP}:{name}"
 
 # ======================================================
 # Config da página
@@ -525,6 +540,14 @@ from typing import Optional, Iterable, Tuple, List
 
 import pandas as pd
 import streamlit as st
+
+# --- chaves únicas para widgets (evita conflito de IDs) ---
+APP = "final"  # pode trocar por outro prefixo único do seu app
+
+def K(name: str) -> str:
+    """Gera uma chave única e estável para widgets do Streamlit."""
+    return f"{APP}:{name}"
+
 
 # ---- Guard para dependências de PDF ----
 try:
@@ -913,6 +936,15 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
+
+# --- chaves únicas para widgets (evita conflito de IDs) ---
+APP = "final"  # pode trocar por outro prefixo único do seu app
+
+def K(name: str) -> str:
+    """Gera uma chave única e estável para widgets do Streamlit."""
+    return f"{APP}:{name}"
+
+
 # ---------- Guard para PDF ----------
 try:
     from reportlab.platypus import SimpleDocTemplate, LongTable, TableStyle, Spacer, PageBreak
@@ -1200,6 +1232,14 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
+# --- chaves únicas para widgets (evita conflito de IDs) ---
+APP = "final"  # pode trocar por outro prefixo único do seu app
+
+def K(name: str) -> str:
+    """Gera uma chave única e estável para widgets do Streamlit."""
+    return f"{APP}:{name}"
+
+
 # =========================================
 # Config página
 # =========================================
@@ -1464,6 +1504,15 @@ from datetime import datetime
 
 import pandas as pd
 import streamlit as st
+
+# --- chaves únicas para widgets (evita conflito de IDs) ---
+APP = "final"  # pode trocar por outro prefixo único do seu app
+
+def K(name: str) -> str:
+    """Gera uma chave única e estável para widgets do Streamlit."""
+    return f"{APP}:{name}"
+
+
 
 # ====== Guard para PDF ======
 try:
@@ -1813,6 +1862,14 @@ from datetime import date
 
 import pandas as pd
 import streamlit as st
+
+# --- chaves únicas para widgets (evita conflito de IDs) ---
+APP = "final"  # pode trocar por outro prefixo único do seu app
+
+def K(name: str) -> str:
+    """Gera uma chave única e estável para widgets do Streamlit."""
+    return f"{APP}:{name}"
+
 
 # ============================
 # Config página
