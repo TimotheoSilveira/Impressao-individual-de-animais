@@ -18,7 +18,13 @@ def _as_naive_ts(s: pd.Series) -> pd.Series:
         s2 = s2.dt.tz_convert(None)
     return s2.dt.normalize()
 
-def _bar_image_from_series(pairs: list[tuple[str, float]], title: str, max_w: int = 520) -> Image | None:
+def _bar_image_from_series(
+    pairs: list[tuple[str, float]],
+    title: str,
+    max_w: int = 520,
+) -> Optional["Image"]:
+
+
     """Cria gráfico de barras horizontal (matplotlib) e retorna um Flowable Image para ReportLab."""
     # filtra pares válidos e ordena por valor absoluto (desc)
     clean = [(lab, float(v)) for lab, v in pairs if v is not None and pd.notna(v)]
