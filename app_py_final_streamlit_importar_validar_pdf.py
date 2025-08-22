@@ -8,10 +8,12 @@ from typing import Optional
 import pandas as pd
 import streamlit as st
 
-from pandas.api.types import is_datetime64tz_dtype  # <- novo
+from dataclasses import dataclass
+from pandas.api.types import is_datetime64tz_dtype
+import pandas as pd
 
 def _as_naive_ts(s: pd.Series) -> pd.Series:
-    """Converte série de datas para Timestamp 'naive' (sem fuso) e normaliza."""
+    """Converte série de datas para Timestamp 'naive' (sem timezone) e normaliza."""
     s2 = pd.to_datetime(s, errors="coerce")
     if is_datetime64tz_dtype(s2):
         s2 = s2.dt.tz_convert(None)
@@ -329,30 +331,6 @@ class RangeRule:
     high: Optional[float] = None
     label: str = ""
 
-    # ----- datas plausíveis (usar Timestamp naive) -----
-    min_calving_ts = pd.Timestamp(min_calving_year, 1, 1)
-    today_ts       = pd.Timestamp(today)  # today é date → vira Timestamp
-
-    if "birthdate" in df.columns:
-        s = _as_naive_ts(df["birthdate"])
-        mask = s.notna() & ((s < min_birth_ts) | (s > today_ts))
-        for idx, val in s[mask].items():
-            add_issue(idx, "birthdate", str(val), f"Fora de {min_birth_ts.date()}..{today_ts.date()}")
-
-    if "calving_date" in df.columns:
-        s = _as_naive_ts(df["calving_date"])
-        mask = s.notna() & ((s < min_calving_ts) | (s > today_ts))
-        for idx, val in s[mask].items():
-            add_issue(idx, "calving_date", str(val), f"Fora de {min_calving_ts.date()}..{today_ts.date()}")
-
-    if set(["birthdate", "calving_date"]).issubset(df.columns):
-        b = _as_naive_ts(df["birthdate"])
-        c = _as_naive_ts(df["calving_date"])
-        both = pd.DataFrame({"b": b, "c": c}).dropna()
-        mask = both["c"] < both["b"]
-        for idx, row in both[mask].iterrows():
-            add_issue(idx, "calving_date", str(row["c"]), "Calving < Birth (inconsistente)")
-
 
 # ======================================================
 # Sidebar
@@ -449,11 +427,11 @@ if unknown:
 # Regras
 def validate_types_and_ranges(
     df: pd.DataFrame,
-    today: date,
+    today,
     min_birth_year: int,
     min_calving_year: int,
-    extra_ranges: Dict[str, "RangeRule"] | None = None,
-    dup_keys: List[str] | None = None,
+    extra_ranges: dict[str, "RangeRule"] | None = None,
+    dup_keys: list[str] | None = None,
 ) -> pd.DataFrame:
     """Retorna um DataFrame de issues: index, coluna, valor, problema, gravidade."""
     issues = []
@@ -475,11 +453,7 @@ def validate_types_and_ranges(
         for idx, val in s[mask].items():
             add_issue(idx, "lactation_number", val, "Deve ser inteiro ≥ 1")
 
-    # --- datas plausíveis (usar Timestamp naive) ---
-    min_birth_ts   = pd.Timestamp(min_birth_year, 1, 1)
-    min_calving_ts = pd.Timestamp(min_calving_year, 1, 1)
-    today_ts       = pd.Timestamp(today)
-
+  
     if "birthdate" in df.columns:
         s = _as_naive_ts(df["birthdate"])
         mask = s.notna() & ((s < min_birth_ts) | (s > today_ts))
@@ -536,6 +510,8 @@ def validate_types_and_ranges(
                 add_issue(idx, col, val, f"Fora da faixa {rule.low}..{rule.high}", sev="alerta")
 
     return pd.DataFrame(issues)
+
+
 
 
 if issues_df.empty:
